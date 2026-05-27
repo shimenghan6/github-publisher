@@ -90,12 +90,12 @@ git push -u origin main
 
 | 项目 | 目录 | 状态 |
 |------|------|------|
-| claude-code-wechat | `~/github-repos/claude-code-wechat/` | 已 init，待推送 |
-| browser-control | `~/github-repos/browser-control/` | 已 init，待推送 |
-| github-research | `~/github-repos/github-research/` | 已 init，待推送 |
-| github-skill-downloader | `~/github-repos/github-skill-downloader/` | 已 init，待推送 |
-| github-publisher | `~/github-repos/github-publisher/` | 已 init，待推送 |
-| claude-code-sound-notifier | `~/github-repos/claude-code-sound-notifier/` | 已 init，待推送 |
+| claude-code-wechat | `~/github-repos/claude-code-wechat/` | 已推送 |
+| browser-control | `~/github-repos/browser-control/` | 已推送 |
+| github-research | `~/github-repos/github-research/` | 已推送 |
+| github-skill-downloader | `~/github-repos/github-skill-downloader/` | 已推送 |
+| github-publisher | `~/github-repos/github-publisher/` | 已推送 |
+| claude-code-sound-notifier | `~/github-repos/claude-code-sound-notifier/` | 已推送 |
 
 ## 推送实战踩坑记录（6 个致命坑）
 
@@ -227,6 +227,34 @@ inp.dispatchEvent(new Event('change', {bubbles: true}));
 **教训**：React/Vue 等框架接管了表单元素的 value 属性。操作这类页面时，必须用原生 setter + 手动触发事件来模拟用户输入。
 
 ---
+
+### 坑 7：用户已有浏览器窗口登录了 GitHub，agent-browser 却开新窗口让人重登
+
+**现象**：用户 Edge 浏览器已登录 GitHub，agent-browser 连接时却开了新窗口，新窗口没有登录态，用户被迫重新登录。用户质问"为什么刚刚在已有的窗口已经登录了 github 又跑去新建一个窗口"。
+
+**根因**：普通方式打开的浏览器没有 CDP（Chrome DevTools Protocol）监听端口。agent-browser 必须通过 CDP 端口（默认 9222）才能操控浏览器。连接已有窗口的唯一办法是：先杀掉所有浏览器进程，再用 `--remote-debugging-port=9222` 参数重启一个带调试端口的新实例。这个新实例没有旧 session 的 cookie，必须重新登录。
+
+**解决**：
+```bash
+# 1. 杀掉所有现有浏览器
+taskkill //F //IM msedge.exe
+
+# 2. 重启浏览器，开启 CDP 端口
+msedge.exe --remote-debugging-port=9222 "https://github.com/new"
+
+# 3. 用户在浏览器中重新登录（这一次，session 在调试端口下）
+
+# 4. agent-browser 通过 CDP 连接
+agent-browser --cdp 9222 open "https://github.com/new"
+```
+
+**教训**：
+- 浏览器自动化必须预先计划 CDP 端口。日常使用的浏览器无法被外部工具操控。
+- 操作前告知用户"需要重启浏览器并重新登录"，避免用户困惑。
+- 如果 GitHub 等需要登录态的网站，优先走 SSH/API 而不是浏览器操控。
+
+---
+
 
 ### 最终成功的推送流程
 
