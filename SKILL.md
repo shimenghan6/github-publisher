@@ -97,6 +97,170 @@ git push -u origin main
 | github-publisher | `~/github-repos/github-publisher/` | 已 init，待推送 |
 | claude-code-sound-notifier | `~/github-repos/claude-code-sound-notifier/` | 已 init，待推送 |
 
+## 推送实战踩坑记录（6 个致命坑）
+
+以下是首次批量推送 6 个项目时遇到的完整踩坑记录。
+
+### 坑 1：`gh auth login --web` 设备认证反复超时
+
+**现象**：`gh auth login --web` 弹出设备码后，浏览器或终端无法完成认证，`gh auth status` 始终显示未登录。
+
+**根因**：企业/地区网络限制，GitHub REST API（`github.com/login/device`）被防火墙阻断。HTTPS 请求到 GitHub API 的路径不通。
+
+**尝试过的方案**：
+| 方案 | 结果 |
+|------|------|
+| `gh auth login --web` 设备码 | 超时，`ConnectTimeout` |
+| `gh auth login --git-protocol ssh` | 同样需要设备认证，一样的超时 |
+| Personal Access Token | 用户未创建，需额外步骤 |
+
+**最终解决**：放弃 HTTPS 设备认证，改用 SSH 协议。生成 ed25519 密钥 → 用户粘贴到 GitHub Settings → `git push git@github.com` 绕过 API。
+
+**教训**：优先检测网络状况。如果 `curl github.com` 能通但 `gh` 不能，直接用 SSH。
+
+---
+
+### 坑 2：RSA SSH 密钥 "Server accepts key" 但最终 Permission denied
+
+**现象**：`ssh -vT git@github.com` 显示 `Server accepts key`，但最后 `Permission denied (publickey)`。
+
+**根因**：GitHub 对某些 RSA 密钥的签名算法支持有限。`ssh-rsa` 在新版 OpenSSH 中可能不被 GitHub 接受。
+
+**解决**：用 `ssh-keygen -t ed25519` 生成 ed25519 密钥，在 `~/.ssh/config` 中配置：
+```
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_github
+    IdentitiesOnly yes
+```
+
+**教训**：首选 ed25519 密钥，兼容性最好。RSA 即使 GitHub 接受也可能在特定客户端失效。
+
+---
+
+### 坑 3：agent-browser 连不上用户已有的浏览器窗口
+
+**现象**：用户 Edge/Chrome 已登录 GitHub，但 `agent-browser --auto-connect` 失败，所有 CDP 端口（9222/9223/9229）无响应。
+
+**根因**：Chrome/Edge 必须以 `--remote-debugging-port=9222` 参数启动才会开启 CDP 监听端口。用户正常打开的浏览器没有这个端口。用 `--profile` 指定用户目录也不生效，因为浏览器锁定了 profile。
+
+**尝试过的方案**：
+| 方案 | 结果 |
+|------|------|
+| `agent-browser --auto-connect` | 端口不通 |
+| `agent-browser --cdp 9222` | 端口不通 |
+| `netstat` 扫描常见端口 | 全部关闭 |
+| `--profile "Default"` | 新浏览器没有 cookie |
+
+**最终解决**：`taskkill //F //IM msedge.exe` 杀掉所有 Edge 进程 → `msedge.exe --remote-debugging-port=9222 "https://github.com/new"` 重启 → 用户重新登录 → `agent-browser --cdp 9222` 成功连接。
+
+**教训**：浏览器自动化需要预先计划 CDP 端口。正常使用的浏览器无法被外部工具操控，必须重启带调试参数。这一步需要用户配合（关浏览器→重登）。
+
+---
+
+### 坑 4：agent-browser `snapshot` 在 GitHub SPA 页面返回空
+
+**现象**：`agent-browser snapshot -i` 在 `github.com/new` 返回 `(no interactive elements)`，无法使用 `click @eXX` 方式操作。
+
+**根因**：GitHub 是 React SPA，DOM 全部由 JavaScript 动态渲染。无障碍树可能未及时更新，或 GitHub 使用了 shadow DOM / web component 导致快照为空。
+
+**解决**：完全放弃 snapshot + ref 路径，改用 `agent-browser eval` 直接执行 JavaScript：
+```js
+agent-browser eval "document.getElementById('repository-name-input')..."
+```
+
+**教训**：现代 SPA 网站（React/Vue）不要依赖 snapshot。优先用 eval 直接查 DOM。
+
+---
+
+### 坑 5：`eval` 内 `setTimeout` 不生效
+
+**现象**：用 eval 填表后 `setTimeout(() => btn.click(), 800)` 不触发，eval 返回成功但按钮未点击。循环建 6 个仓库时全部失败。
+
+**根因**：`agent-browser eval` 同步返回 eval 语句的返回值后，页面脚本立即退出或被回收。`setTimeout` 的异步回调还来不及执行就被取消了。
+
+**第一次尝试（失败）**：
+```js
+// eval 返回 'submitted' 但 setTimeout 从未触发
+inp.value = 'repo-name';
+setTimeout(() => { btn.click(); }, 800);
+return 'submitted';
+```
+
+**最终解决**：拆成两步 eval：
+1. 第一次 eval：填表 → 返回结果
+2. `sleep 2` 等待 React 验证表单
+3. 第二次 eval：查找按钮 → 点击
+
+```bash
+# Step 1: fill
+agent-browser eval "...nativeInputValueSetter.call(inp, '$repo')..."
+
+# Wait
+sleep 2
+
+# Step 2: click
+agent-browser eval "...btn.click()..."
+```
+
+**教训**：eval 中不要用 setTimeout/async 做延迟操作。拆成两个 eval + shell sleep。
+
+---
+
+### 坑 6：React 表单输入值设置不生效
+
+**现象**：直接 `document.getElementById('repository-name-input').value = 'xxx'` 填表后，创建按钮仍是灰色禁用状态。
+
+**根因**：React 劫持了原生 `<input>` 的 setter，用 `HTMLElement.prototype` 的 setter 覆盖了赋值行为。直接赋值 `input.value` 不会触发 React 的状态更新，创建按钮检测不到输入变化。
+
+**解决**：用原生 Property Descriptor 强制设置：
+```js
+const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype, 'value'
+).set;
+nativeInputValueSetter.call(inp, 'repo-name');
+inp.dispatchEvent(new Event('input', {bubbles: true}));
+inp.dispatchEvent(new Event('change', {bubbles: true}));
+```
+
+**教训**：React/Vue 等框架接管了表单元素的 value 属性。操作这类页面时，必须用原生 setter + 手动触发事件来模拟用户输入。
+
+---
+
+### 最终成功的推送流程
+
+```
+1. ssh-keygen -t ed25519 → 用户粘贴公钥到 GitHub Settings
+2. taskkill 所有 Edge → 重启 msedge --remote-debugging-port=9222
+3. 用户在 Edge 中登录 GitHub
+4. agent-browser --cdp 9222 连接现有 Edge
+5. 用 nativeInputValueSetter 填表 → 两步 eval 创建仓库
+6. 循环 6 次建完所有 repos
+7. git remote add git@github.com → git push -u origin master
+8. 6 个仓库全部推送成功
+```
+
+### 推送前网络诊断清单
+
+```
+□ curl -s https://github.com → HTTP 200? 能通则可能走 HTTPS
+□ ssh -T git@github.com → Hi xxx! 出现则 SSH 通
+□ gh auth status → 已登录则优先用 gh
+□ 三者都不通 → 排查代理/VPN/防火墙
+```
+
+### 浏览器自动化诊断清单
+
+```
+□ Edge/Chrome 是否以 --remote-debugging-port=9222 启动？
+□ curl http://127.0.0.1:9222/json/version → 有 JSON 返回则 CDP 通
+□ agent-browser --cdp 9222 open "URL" → 成功则继续
+□ 页面是 SPA？ → 放弃 snapshot，直接用 eval
+□ 表单是 React？ → 用 nativeInputValueSetter + dispatchEvent
+□ setTimeout 无效？ → 拆分 eval + shell sleep
+```
+
 ## 硬编码路径替换规则
 
 | 原始 | 替换为 |
