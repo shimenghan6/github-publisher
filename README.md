@@ -2,7 +2,7 @@
 
 > "把这 6 个项目发布到 GitHub"——AI 打开浏览器，登录、填表、建仓库、推代码。6 个项目全上线，你一句话没多说，一下鼠标没碰。
 
-**全球第一个能操控浏览器替你建 GitHub 仓库并推送的 AI Agent 技能。不依赖 gh CLI，不依赖 Personal Access Token。**
+**全球第一个能操控浏览器替你建 GitHub 仓库并推送的 AI Agent 技能。CDP 直控 + React 表单注入 + SSH ed25519，不依赖 gh CLI，不依赖 Token。含 6 个真实踩坑记录。**
 
 ### 谁需要这个
 
