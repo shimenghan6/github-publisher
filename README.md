@@ -16,9 +16,20 @@
 
 ## 安装
 
+### 一键安装
+
+**Windows**：下载 `install.bat` → **双击运行**
+
+**macOS / Linux**：
+
 ```bash
-bash install.sh      # macOS/Linux
-install.bat          # Windows 双击
+bash install.sh
+```
+
+### 手动安装
+
+```bash
+cp SKILL.md ~/.claude/skills/github-publisher/
 ```
 
 ## 使用

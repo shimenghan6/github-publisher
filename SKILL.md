@@ -70,7 +70,8 @@ description: |
 □ .gitignore 包含 node_modules/、__pycache__/、*.log
 □ 无硬编码用户路径（搜索 C:/Users/、/home/）
 □ README.md 包含：安装方式、使用说明、依赖列表
-□ ★ 一键安装脚本已创建（install.ps1 / install.sh / install.py）
+□ ★ 一键安装入口突出展示（README 顶部，"Windows 双击 install.bat" + "macOS curl pipe"）
+□ ★ 一键安装和手动安装明确区分（一键在前，手动在后）
 □ account.json、credentials.json 不在仓库中
 □ 没有 node_modules/ 目录（不应该提交）
 ```
