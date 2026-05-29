@@ -76,15 +76,43 @@ description: |
 □ 没有 node_modules/ 目录（不应该提交）
 ```
 
-### 4. 推送到 GitHub
+### 4. 推送到 GitHub（含版本管理）
+
+每次推送自动打版本标签：
 
 ```bash
 cd ~/github-repos/<项目名>
 git add -A
 git commit -m "<提交信息>"
-# 用户需先在 GitHub 创建空仓库，然后：
+
+# 自动检测最新版本号并 bump
+LATEST=$(git tag -l 'v*' | sort -V | tail -1)
+if [ -z "$LATEST" ]; then
+  NEW="v1.0"
+else
+  # bump minor version: v1.2 → v1.3
+  MINOR=$(echo $LATEST | cut -d. -f2)
+  NEW="v1.$((MINOR + 1))"
+fi
+git tag "$NEW"
+git push origin master --tags
+```
+
+**版本规则**：
+- 首次发布：`v1.0`
+- 后续更新：`v1.1` → `v1.2` → `v1.3` → ...
+- 大版本（破坏性变更）：手动打 `v2.0`
+
+### 5. 用户手动推送到 GitHub
+
+如果自动化走不通，用户自己在 GitHub 建仓库后：
+
+```bash
+cd ~/github-repos/<项目名>
+git add -A
+git commit -m "<提交信息>"
 git remote add origin <repo-url>
-git push -u origin main
+git push -u origin master --tags
 ```
 
 ## 项目清单（当前）
