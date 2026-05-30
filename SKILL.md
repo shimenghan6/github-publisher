@@ -117,6 +117,7 @@ git push -u origin master --tags
 | github-publisher | `~/github-repos/github-publisher/` | 已推送 |
 | ai-installer | `~/github-repos/ai-installer/` | 已推送 |
 | claude-code-sound-notifier | `~/github-repos/claude-code-sound-notifier/` | 已推送 |
+| offline-packager | `~/github-repos/offline-packager/` | 已推送 |
 
 ## 推送实战踩坑记录（6 个致命坑）
 
@@ -306,6 +307,87 @@ gh CLI未安装或网络不通时,用Personal Access Token+REST API创建仓库,
 3. git remote add git@github.com -> git push -u origin main
 
 验证token权限: r.headers.get("X-OAuth-Scopes") 应包含repo.
+
+### 坑9: 跳过 github-publisher skill 手动操作（2026-05-30 教训）
+
+**现象**：用户说"把 offline-packager 发布到 GitHub"，直接开始手动操作：读文件→改 README→写 install 脚本→手动连浏览器。没调用 github-publisher skill，也没调用 browser-control skill。
+
+**后果**：
+- 重复劳动：github-publisher skill 里已有完整发布流程+踩坑记录，全部被跳过
+- 用户批评估："为什么不会自动用发布管理器skill呢？"
+- 浪费大量时间在已解决的问题上（React表单、CDP连接等）
+- 用 MCP chrome-devtools 而不是 browser-control skill，开新浏览器窗口
+
+**根因**：没有执行自动路由规则——匹配到"发布到 GitHub"场景时没有自动触发 github-publisher skill。
+
+**解决（铁律）**：
+
+```
+任何发布 GitHub 操作 → 自动调用 github-publisher skill（不是可选项，是必须）
+需要浏览器创建仓库 → github-publisher 内部调用 browser-control skill（不直接操作浏览器）
+```
+
+**铁律已写入 memory**：`auto-use-skills.md` — 场景匹配时必须自动调用对应 skill。
+
+---
+
+### 坑10: agent-browser --cdp 在已有窗口时会新开标签页（2026-05-30 教训）
+
+**现象**：用户 Edge 已开 CDP 端口 9222，`agent-browser --cdp 9222 open "URL"` 能连上，但会新开一个标签页。用户连续批评估"不要新开窗口"、"在已开的窗口执行"。
+
+**根因**：agent-browser 不支持指定已有标签页——`open` 命令总是创建新标签页。即使 CDP 连接的是用户浏览器，用户体验仍然是"被操控开新页"。
+
+**解决：Python + CDP WebSocket 直连已有标签页**（零新窗口）：
+
+```python
+import asyncio, json, urllib.request, websockets
+
+async def cdp_on_existing_tab(url_match):
+    """在用户已打开的标签页上执行操作，不新开任何窗口"""
+    resp = urllib.request.urlopen('http://127.0.0.1:9222/json')
+    pages = json.loads(resp.read())
+    
+    # 找到用户已在浏览的目标标签页
+    target = next((p for p in pages if url_match in p.get('url', '')), None)
+    if not target:
+        raise Exception('目标标签页未找到')
+    
+    ws_url = target['webSocketDebuggerUrl']
+    
+    async with websockets.connect(ws_url) as ws:
+        await ws.send(json.dumps({'id': 1, 'method': 'Runtime.enable'}))
+        await ws.recv()  # 等待就绪
+        
+        # 在已有标签页执行任何 JS（填表、点击、读取等）
+        await ws.send(json.dumps({
+            'id': 2, 'method': 'Runtime.evaluate',
+            'params': {'expression': 'document.title', 'returnByValue': True}
+        }))
+        result = await ws.recv()
+        print(result)
+
+asyncio.run(cdp_on_existing_tab('github.com/new'))
+```
+
+**关键优势**：
+- 不新开窗口/标签页，用户看到的标签页就是操作目标
+- 直接操控用户已登录的页面（无需重新登录）
+- 不需要 PAT token，不需要 gh CLI
+- 用 Python 内置 `websockets` 库（pip install websockets）
+
+**判断是否能直连已有窗口**：
+```bash
+curl -s http://127.0.0.1:9222/json/version  # 有 JSON 返回 → CDP 端口已开 → 可用此方案
+```
+
+### 创建 GitHub 仓库 —— 最终推荐方案（按优先级）
+
+| 优先级 | 方案 | 适用条件 |
+|--------|------|---------|
+| 1 | Python + CDP WebSocket 操控已有标签页 | 用户 Edge 已开 CDP 端口，且已登录 GitHub |
+| 2 | PAT + REST API + SSH push | 无 CDP 端口但有 PAT token |
+| 3 | agent-browser --cdp | 上面两个都不可用（但会新开标签页） |
+
 ## 硬编码路径替换规则
 
 | 原始 | 替换为 |
