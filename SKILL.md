@@ -70,40 +70,31 @@ description: |
 □ .gitignore 包含 node_modules/、__pycache__/、*.log
 □ 无硬编码用户路径（搜索 C:/Users/、/home/）
 □ README.md 包含：安装方式、使用说明、依赖列表
-□ ★ 一键安装入口突出展示（README 顶部，"Windows 双击 install.bat" + "macOS curl pipe"）
-□ ★ 一键安装和手动安装明确区分（一键在前，手动在后）
+□ ★ 一键安装脚本已创建（install.ps1 / install.sh / install.py）
 □ account.json、credentials.json 不在仓库中
 □ 没有 node_modules/ 目录（不应该提交）
 ```
 
 ### 4. 推送到 GitHub（含版本管理）
 
-每次推送自动打版本标签：
-
 ```bash
 cd ~/github-repos/<项目名>
 git add -A
 git commit -m "<提交信息>"
-
-# 自动检测最新版本号并 bump
-LATEST=$(git tag -l 'v*' | sort -V | tail -1)
-if [ -z "$LATEST" ]; then
-  NEW="v1.0"
-else
-  # bump minor version: v1.2 → v1.3
-  MINOR=$(echo $LATEST | cut -d. -f2)
-  NEW="v1.$((MINOR + 1))"
-fi
-git tag "$NEW"
-git push origin master --tags
+git push origin master --tags  # pre-push hook 自动 bump 版本号
 ```
 
-**版本规则**：
-- 首次发布：`v1.0`
-- 后续更新：`v1.1` → `v1.2` → `v1.3` → ...
-- 大版本（破坏性变更）：手动打 `v2.0`
+### 5. 生成离线安装包（可选，需明确请求）
 
-### 5. 用户手动推送到 GitHub
+**仅当用户说"打包离线版"/"生成安装包"/"打包ZIP"时执行。不允许自动生成。**
+
+```bash
+powershell -File ~/github-repos/claude-code-starter/offline/package.ps1
+```
+
+ZIP → 桌面 `ClaudeCode离线安装包.zip`
+
+### 6. 用户手动推送到 GitHub
 
 如果自动化走不通，用户自己在 GitHub 建仓库后：
 
@@ -124,6 +115,7 @@ git push -u origin master --tags
 | github-research | `~/github-repos/github-research/` | 已推送 |
 | github-skill-downloader | `~/github-repos/github-skill-downloader/` | 已推送 |
 | github-publisher | `~/github-repos/github-publisher/` | 已推送 |
+| ai-installer | `~/github-repos/ai-installer/` | 已推送 |
 | claude-code-sound-notifier | `~/github-repos/claude-code-sound-notifier/` | 已推送 |
 
 ## 推送实战踩坑记录（6 个致命坑）
@@ -302,6 +294,18 @@ inp.dispatchEvent(new Event('change', {bubbles: true}));
 □ setTimeout 无效？ → 拆分 eval + shell sleep
 ```
 
+
+
+### 坑8: gh CLI不可用时的备用方案(PAT+API)
+
+gh CLI未安装或网络不通时,用Personal Access Token+REST API创建仓库,SSH推送.
+
+1. 用户创建classic PAT: github.com/settings/tokens -> new -> classic -> 勾选repo
+2. Python创建仓库:
+`import requests; r=requests.post("https://api.github.com/user/repos",json={"name":"repo-name"},headers={"Authorization":"Bearer <token>"},timeout=15)`
+3. git remote add git@github.com -> git push -u origin main
+
+验证token权限: r.headers.get("X-OAuth-Scopes") 应包含repo.
 ## 硬编码路径替换规则
 
 | 原始 | 替换为 |
