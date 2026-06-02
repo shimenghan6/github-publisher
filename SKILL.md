@@ -1,8 +1,8 @@
 ---
 name: github-publisher
 description: |
-  GitHub 项目管理与发布。将 Claude Code 技能/项目整理到 ~/github-repos/，
-  自动同步、去硬编码、init git、生成 README 模板、准备推送。
+  GitHub 项目管理与发布。自动同步、去硬编码、美化 README、打版本号、一键安装、推送。
+  内置 readme-polisher 美化 + 版本号管理（v1.0/v1.1/...）。
   触发条件："发布到github", "整理项目", "推送到github", "准备开源",
   "publish to github", "github发布", "把xxx推github"
 ---
@@ -45,9 +45,11 @@ description: |
      - C:/Users/shish → 环境变量自动检测
      - C:\Users\shish → 跨平台兼容写法
 → 8. 如果没有 README.md → 生成最小模板
-→ 9. ★ 创建一键安装脚本（铁律，见下方"一键安装脚本要求"）
-→ 10. 更新根 README.md 的项目列表
-→ 11. 更新本技能的项目清单
+→ 9. ★ 调用 readme-polisher skill 美化 README（钩子+关键词+对比表）
+→ 10. ★ 创建一键安装脚本（铁律，见下方"一键安装脚本要求"）
+→ 11. ★ 打版本号: git tag v1.0 && git push origin v1.0
+→ 12. 更新根 README.md 的项目列表
+→ 13. 更新本技能的项目清单
 ```
 
 ### 2. 更新已有项目
@@ -59,9 +61,63 @@ description: |
 → 2. 确认 ~/.claude/skills/<name>/ 有更新源（不在则跳过同步步骤）
 → 3. 同步源文件（不覆盖 .git 目录，不覆盖用户手动改过的 README）
 → 4. 重新扫描硬编码路径
+→ 5. 如果 README 有变更 → 调用 readme-polisher skill 美化
+→ 6. ★ 版本号 +1: 查看当前 tag → bump → git tag vX.Y && git push origin vX.Y
 ```
 
-### 3. 发布前检查清单（逐项输出结果）
+### 3. 版本号管理（每次推送必做）
+
+**每次 push 前，必须打版本号。** 格式: `v主.次`（如 v1.0, v1.1, v2.0）。
+
+```bash
+# 查看当前最新版本
+git tag --sort=-v:refname | head -1
+
+# 首次发布
+git tag v1.0 && git push origin v1.0
+
+# 更新发布（手动 bump，pre-push hook 会自动再 +1）
+# 当前是 v1.0 → 手动打 v1.1 → push → hook 自动生成 v1.2
+git tag v1.1 && git push origin v1.1
+```
+
+**版本号规则：**
+- 新项目首次发布 → v1.0
+- 小更新（修 bug、加文档）→ +0.1（v1.0 → v1.1）
+- 大更新（新功能、架构变更）→ +1.0（v1.x → v2.0）
+- 所有项目必须有至少一个 tag
+
+**当前各项目最新版本：**
+
+| 项目 | 版本 |
+|------|:---:|
+| claude-code-wechat | — |
+| browser-control | v1.5 |
+| github-research | — |
+| github-skill-downloader | — |
+| github-publisher | v1.5 |
+| ai-installer | — |
+| claude-code-sound-notifier | — |
+| offline-packager | v1.0 |
+| claude-code-starter | v1.9 |
+
+### 4. README 美化（readme-polisher 集成）
+
+**每次发布或更新 README 时，必须调用 readme-polisher skill。**
+
+触发时机：
+- 新增项目：步骤 9
+- 更新项目：README 有变更时
+- 用户说"美化 README"时
+
+美化内容：
+- 标题下加 `>` 钩子引用块（有画面感的场景描述）
+- 加一行 `**技术关键词**` 粗体
+- 加"谁需要这个"表格（3-4 行）
+- 加 Before/After 对比表（工具/ starter 类项目）
+- **原有一字不动**
+
+### 5. 发布前检查清单（逐项输出结果）
 
 ```
 □ ~/github-repos/ 目录存在
@@ -70,12 +126,14 @@ description: |
 □ .gitignore 包含 node_modules/、__pycache__/、*.log
 □ 无硬编码用户路径（搜索 C:/Users/、/home/）
 □ README.md 包含：安装方式、使用说明、依赖列表
+□ ★ README 已用 readme-polisher 美化（钩子+关键词+对比表）
 □ ★ 一键安装脚本已创建（install.ps1 / install.sh / install.py）
+□ ★ 版本号已打（git tag vX.Y）
 □ account.json、credentials.json 不在仓库中
 □ 没有 node_modules/ 目录（不应该提交）
 ```
 
-### 4. 推送到 GitHub（含版本管理）
+### 6. 推送到 GitHub（含版本管理）
 
 ```bash
 cd ~/github-repos/<项目名>
@@ -84,7 +142,7 @@ git commit -m "<提交信息>"
 git push origin master --tags  # pre-push hook 自动 bump 版本号
 ```
 
-### 5. 生成离线安装包（可选，需明确请求）
+### 7. 生成离线安装包（可选，需明确请求）
 
 **仅当用户说"打包离线版"/"生成安装包"/"打包ZIP"时执行。不允许自动生成。**
 
