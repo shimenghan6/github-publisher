@@ -117,21 +117,31 @@ git tag v1.1 && git push origin v1.1
 - 加 Before/After 对比表（工具/ starter 类项目）
 - **原有一字不动**
 
-### 5. 发布前检查清单（逐项输出结果）
+### 5. ★ 强制输出检查清单（铁律：未全勾不得结束）
+
+**每一次发布操作结束时，必须在回复中逐项输出此清单。** 这是防止漏步骤的唯一外部强制机制。原理：AI 注意力在执行多步后衰减，子步骤（readme-polisher、install脚本、tag）容易被跳过。输出清单强制每步被回顾。
 
 ```
-□ ~/github-repos/ 目录存在
-□ 项目目录存在
-□ .git 已初始化
-□ .gitignore 包含 node_modules/、__pycache__/、*.log
-□ 无硬编码用户路径（搜索 C:/Users/、/home/）
-□ README.md 包含：安装方式、使用说明、依赖列表
-□ ★ README 已用 readme-polisher 美化（钩子+关键词+对比表）
-□ ★ 一键安装脚本已创建（install.ps1 / install.sh / install.py）
-□ ★ 版本号已打（git tag vX.Y）
-□ account.json、credentials.json 不在仓库中
-□ 没有 node_modules/ 目录（不应该提交）
+═══════════════════════════════════════
+        发布完成检查清单
+═══════════════════════════════════════
+□ 1. ~/github-repos/ 目录存在
+□ 2. 项目目录存在且文件已同步
+□ 3. .git 已初始化
+□ 4. .gitignore 包含 node_modules/、__pycache__/、*.log
+□ 5. 无硬编码用户路径（搜索 C:/Users/、/home/）
+□ 6. README.md 存在且包含安装方式、使用说明、依赖
+□ 7. ★ readme-polisher 已调用并美化 README（钩子+关键词+对比表）
+□ 8. ★ 一键安装脚本已创建（install.ps1 / install.sh）
+□ 9. ★ 版本号已打（git tag vX.Y）
+□ 10. account.json、credentials.json 不在仓库中
+□ 11. 没有 node_modules/ 目录
+□ 12. git push origin master --tags 已执行成功
+═══════════════════════════════════════
 ```
+
+**如果任一带 ★ 项为 ☐ → 立即补做，不得跳过。**
+**必须每项都 □ → 才能说"发布完成"。**
 
 ### 6. 推送到 GitHub（含版本管理）
 
